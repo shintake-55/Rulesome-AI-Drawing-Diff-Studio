@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       // GitHub Pages用のベースパス設定（ここを追加）
-      base: '/Rulesome-AI-Drawing-Diff-Studio/',
+      base: './',
       
       server: {
         port: 3000,
