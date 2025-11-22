@@ -355,7 +355,7 @@ const analyzeTile = async (
     }
     
     【座標】
-    0-1000の正規化座標を使用。
+    0-1000の正規化座標を使用。順序は [xmin, ymin, xmax, ymax] です。
   `;
 
   try {
@@ -399,7 +399,7 @@ const analyzeTile = async (
     const rawDiffs = JSON.parse(jsonText) as any[];
 
     const items = rawDiffs.map((item: any) => {
-      const [ymin, xmin, ymax, xmax] = item.box_2d;
+      const [xmin, ymin, xmax, ymax] = item.box_2d;
       const nYmin = Math.max(0, Math.min(1000, ymin));
       const nXmin = Math.max(0, Math.min(1000, xmin));
       const nYmax = Math.max(0, Math.min(1000, ymax));
