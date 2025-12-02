@@ -3,17 +3,13 @@ import { fileURLToPath } from 'url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// パス設定のための「おまじない」（ESM対応）
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
-    // 環境変数を読み込む
     const env = loadEnv(mode, '.', '');
-    
     return {
-      // 重要：ここがGitHubのリポジトリ名と一致していないとホワイトアウトします
-      // もしリポジトリ名が違う場合は、'/リポジトリ名/' に書き換えてください
+      // ▼ リポジトリ名に合わせて設定（ここが違うと画面が白くなります）
       base: '/Rulesome-AI-Drawing-Diff-Studio/',
       
       server: {
@@ -22,8 +18,8 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        // 重要：アプリ内で process.env.API_KEY を使えるようにする設定
-        // GitHub Secrets (VITE_GEMINI_API_KEY) を読み込みます
+        // ▼ ここが修正の肝です！
+        // GitHub Actionsの秘密の鍵(VITE_GEMINI_API_KEY)を、アプリが読める形に変換します
         'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY)
       },
@@ -33,5 +29,16 @@ export default defineConfig(({ mode }) => {
         }
       },
       build: {
-        target: 'esnext', // 最新のJavaScript機能（Top-level await等）を許可
+        target: 'esnext',
         chunkSizeWarningLimit: 1000,
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              vendor: ['react', 'react-dom'],
+              pdf: ['pdfjs-dist']
+            }
+          }
+        }
+      }
+    };
+});
