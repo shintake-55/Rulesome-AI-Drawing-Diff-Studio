@@ -16,14 +16,14 @@ export interface BoundingBox {
 }
 
 export interface DiffItem {
-  id: number; // Changed to handle formatted display logic in UI
-  displayId?: string; // #0001 format
+  id: number;
+  displayId?: string;
   type: ChangeType;
   category?: DiffCategory;
   title: string;
   description: string;
   box: BoundingBox;
-  points?: number[][]; // Polyline points [[x,y], [x,y]]
+  points?: number[][];
   movedFrom?: { x: number, y: number };
   areaSize: number;
 }
@@ -48,7 +48,7 @@ export interface ViewState {
 }
 
 export interface DetectionSettings {
-  sensitivity: number; // Kept for internal logic, though UI might hide it
+  sensitivity: number;
   minArea: number;     
   mergeDistance: number; 
   mode: 'MACRO' | 'MICRO' | 'ELECTRICAL' | 'CUSTOM';
@@ -58,3 +58,28 @@ export interface ImageState {
   before: string | null;
   after: string | null;
 }
+
+// --- New Types for Multi-Page Support ---
+
+export interface PageData {
+  id: string;        // Unique ID for the page
+  url: string;       // Blob URL of the image
+  fileName: string;  // Original filename
+  pageNumber: number;// 1-based page index
+  thumbUrl?: string; // Optional thumbnail
+}
+
+export interface ComparisonPair {
+  id: string;
+  name: string;      // e.g., "Page 1 - Page 1"
+  beforePage: PageData;
+  afterPage: PageData;
+  
+  // Each pair maintains its own state
+  alignment: AlignmentState;
+  results: DiffItem[];
+  totalTokens: number;
+  isAnalyzed: boolean;
+}
+
+export type AppPhase = 'UPLOAD' | 'MAPPING' | 'ANALYSIS';

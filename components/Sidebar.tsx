@@ -1,47 +1,41 @@
 
 import React, { useState } from 'react';
 import { 
-  Upload, Move, Search, Layers, ChevronRight, ChevronDown, 
-  ZoomIn, RotateCw, FileInput, AlertCircle, CheckCircle2, FileText, Zap, Cpu
+  Move, Search, Layers, Upload,
+  ZoomIn, RotateCw, FileInput, AlertCircle, CheckCircle2, FileText, Zap, Cpu, Settings
 } from 'lucide-react';
 import { Button, Slider, SectionHeader, Badge, cn } from './ui';
-import { AlignmentState, DetectionSettings, DiffItem, ChangeType, ImageState } from '../types';
+import { AlignmentState, DetectionSettings, DiffItem, ChangeType, ComparisonPair } from '../types';
 
 interface SidebarProps {
   width: number;
   setWidth: (w: number) => void;
-  images: ImageState;
-  setImages: (imgs: ImageState) => void;
-  alignment: AlignmentState;
-  setAlignment: (fn: (prev: AlignmentState) => AlignmentState) => void;
+  // Current Active Pair Props
+  activePair: ComparisonPair | null;
+  updateActivePairAlignment: (fn: (prev: AlignmentState) => AlignmentState) => void;
+  
   settings: DetectionSettings;
   setSettings: (s: DetectionSettings) => void;
   onAnalyze: () => void;
   isAnalyzing: boolean;
-  results: DiffItem[];
+  
   selectedResultId: number | null;
   onSelectResult: (id: number) => void;
-  totalTokens?: number; // Add token usage prop
+  
+  // Navigation
+  onReconfigure: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   width, setWidth,
-  images, setImages,
-  alignment, setAlignment,
+  activePair, updateActivePairAlignment,
   settings, setSettings,
   onAnalyze, isAnalyzing,
-  results, selectedResultId, onSelectResult, totalTokens
+  selectedResultId, onSelectResult,
+  onReconfigure
 }) => {
-  const [activeTab, setActiveTab] = useState<'files' | 'analysis'>('files');
+  const [activeTab, setActiveTab] = useState<'info' | 'analysis'>('analysis');
   const [isResizing, setIsResizing] = useState(false);
-
-  // File handlers
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, key: 'before' | 'after') => {
-    if (e.target.files && e.target.files[0]) {
-      const url = URL.createObjectURL(e.target.files[0]);
-      setImages({ ...images, [key]: url });
-    }
-  };
 
   // Resize logic
   const startResizing = React.useCallback((e: React.MouseEvent) => {
@@ -68,12 +62,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [isResizing, setWidth]);
 
+  if (!activePair) return <div style={{ width }} className="bg-white border-r border-google-border"></div>;
+
+  const results = activePair.results;
+  const alignment = activePair.alignment;
+  const totalTokens = activePair.totalTokens;
+
   const adjustAlignment = (key: keyof AlignmentState, delta: number) => {
-    setAlignment(prev => ({ ...prev, [key]: prev[key] + delta }));
+    updateActivePairAlignment(prev => ({ ...prev, [key]: prev[key] + delta }));
   };
 
   const resetAlignment = () => {
-    setAlignment(prev => ({ ...prev, x: 0, y: 0, scale: 1, rotation: 0 }));
+    updateActivePairAlignment(prev => ({ ...prev, x: 0, y: 0, scale: 1, rotation: 0 }));
   }
 
   const stats = {
@@ -91,65 +91,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Tabs */}
       <div className="flex border-b border-google-border bg-google-gray/30">
         <button 
-          onClick={() => setActiveTab('files')}
-          className={cn("flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 border-b-2 transition-colors", activeTab === 'files' ? "border-google-blue text-google-blue bg-white" : "border-transparent text-google-subtext hover:bg-white/50")}
-        >
-          <Upload size={16} />
-          ファイル
-        </button>
-        <button 
           onClick={() => setActiveTab('analysis')}
           className={cn("flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 border-b-2 transition-colors", activeTab === 'analysis' ? "border-google-blue text-google-blue bg-white" : "border-transparent text-google-subtext hover:bg-white/50")}
         >
           <Search size={16} />
           解析・補正
         </button>
+        <button 
+          onClick={() => setActiveTab('info')}
+          className={cn("flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 border-b-2 transition-colors", activeTab === 'info' ? "border-google-blue text-google-blue bg-white" : "border-transparent text-google-subtext hover:bg-white/50")}
+        >
+          <Settings size={16} />
+          ペア情報
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-0">
         
-        {/* FILES TAB */}
-        {activeTab === 'files' && (
+        {/* PAIR INFO TAB */}
+        {activeTab === 'info' && (
           <div className="p-4 space-y-6">
-            <div className="space-y-4">
-              <div className="p-4 border-2 border-dashed border-google-border rounded-lg bg-google-gray/20 text-center hover:bg-google-gray/40 transition-colors relative group">
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  {images.before ? (
-                    <div className="flex items-center gap-2 text-green-600 font-medium">
-                      <CheckCircle2 size={20} /> 変更前（基準）読込済
-                    </div>
-                  ) : (
-                    <>
-                      <Upload className="mb-2 text-google-subtext" size={24} />
-                      <span className="text-sm text-google-text">変更前（基準図）</span>
-                      <span className="text-xs text-google-subtext mt-1">PNG, JPG, PDF</span>
-                    </>
-                  )}
-                </div>
-                <input type="file" className="opacity-0 w-full h-24 cursor-pointer" onChange={(e) => handleFileChange(e, 'before')} />
-              </div>
-
-              <div className="p-4 border-2 border-dashed border-google-border rounded-lg bg-google-gray/20 text-center hover:bg-google-gray/40 transition-colors relative group">
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  {images.after ? (
-                    <div className="flex items-center gap-2 text-green-600 font-medium">
-                      <CheckCircle2 size={20} /> 変更後（比較対象）読込済
-                    </div>
-                  ) : (
-                    <>
-                      <Upload className="mb-2 text-google-subtext" size={24} />
-                      <span className="text-sm text-google-text">変更後（対象図）</span>
-                      <span className="text-xs text-google-subtext mt-1">PNG, JPG, PDF</span>
-                    </>
-                  )}
-                </div>
-                <input type="file" className="opacity-0 w-full h-24 cursor-pointer" onChange={(e) => handleFileChange(e, 'after')} />
-              </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+               <h3 className="font-bold text-sm text-blue-900 mb-2">{activePair.name}</h3>
+               <div className="space-y-2 text-xs text-blue-800">
+                  <div className="flex justify-between">
+                     <span>変更前:</span>
+                     <span className="font-mono">{activePair.beforePage.fileName} (P.{activePair.beforePage.pageNumber})</span>
+                  </div>
+                  <div className="flex justify-between">
+                     <span>変更後:</span>
+                     <span className="font-mono">{activePair.afterPage.fileName} (P.{activePair.afterPage.pageNumber})</span>
+                  </div>
+               </div>
             </div>
+
+            <Button variant="secondary" className="w-full" onClick={onReconfigure}>
+               ペア構成を変更する
+            </Button>
           </div>
         )}
 
-        {/* ANALYSIS TAB (Merged Align + Detect) */}
+        {/* ANALYSIS TAB */}
         {activeTab === 'analysis' && (
           <div className="pb-20">
             {/* 1. Alignment Section (Top) */}
@@ -179,9 +161,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                </div>
                
                <div className="space-y-4">
-                  <Slider label="拡大率" value={alignment.scale} min={0.800} max={1.200} step={0.001} unit="x" onChange={(v) => setAlignment(prev => ({ ...prev, scale: v }))} />
-                  <Slider label="回転" value={alignment.rotation} min={-10} max={10} step={0.1} unit="°" onChange={(v) => setAlignment(prev => ({ ...prev, rotation: v }))} />
-                  <Slider label="透明度" value={alignment.opacity} min={0} max={1} step={0.05} unit="" onChange={(v) => setAlignment(prev => ({ ...prev, opacity: v }))} />
+                  <Slider label="拡大率" value={alignment.scale} min={0.800} max={1.200} step={0.001} unit="x" onChange={(v) => updateActivePairAlignment(prev => ({ ...prev, scale: v }))} />
+                  <Slider label="回転" value={alignment.rotation} min={-10} max={10} step={0.1} unit="°" onChange={(v) => updateActivePairAlignment(prev => ({ ...prev, rotation: v }))} />
+                  <Slider label="透明度" value={alignment.opacity} min={0} max={1} step={0.05} unit="" onChange={(v) => updateActivePairAlignment(prev => ({ ...prev, opacity: v }))} />
                </div>
             </div>
 
@@ -213,7 +195,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={onAnalyze}
                 disabled={isAnalyzing}
               >
-                {isAnalyzing ? "解析中..." : "差分解析を実行"}
+                {isAnalyzing ? "解析中..." : "現在のペアを解析"}
               </Button>
             </div>
 

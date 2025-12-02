@@ -1,6 +1,11 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { AlignmentState, DiffItem, AnalysisResult, ChangeType } from './types';
+import { AlignmentState, DiffItem, AnalysisResult, ChangeType, PageData, ComparisonPair } from './types';
+import * as pdfjsLib from 'pdfjs-dist';
+import JSZip from 'jszip';
+
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://aistudiocdn.com/pdfjs-dist@4.0.379/build/pdf.worker.mjs`;
 
 // Helper to load an image from a URL
 const loadImage = (src: string): Promise<HTMLImageElement> => {
@@ -13,62 +18,40 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
   });
 };
 
-interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/**
- * Export Composite Image
- */
-export const downloadCompositeImage = async (
-  beforeSrc: string | null,
-  afterSrc: string | null,
+// --- Single Image Export Helper (Internal) ---
+const createCompositeCanvas = async (
+  beforeSrc: string,
+  afterSrc: string,
   alignment: AlignmentState,
   results: DiffItem[]
-) => {
-  if (!beforeSrc) return;
-
+): Promise<HTMLCanvasElement | null> => {
   try {
     const imgBefore = await loadImage(beforeSrc);
     const canvas = document.createElement('canvas');
     canvas.width = imgBefore.naturalWidth;
     canvas.height = imgBefore.naturalHeight;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) return null;
 
-    // 1. Draw Before Image (Base)
+    // 1. Draw Before
     ctx.drawImage(imgBefore, 0, 0);
 
-    // 2. Draw After Image (Overlay)
-    if (afterSrc) {
-      const imgAfter = await loadImage(afterSrc);
-      ctx.save();
-      
-      // Calculate center for rotation/scale
-      const overlayCenterX = (imgAfter.naturalWidth * alignment.scale) / 2;
-      const overlayCenterY = (imgAfter.naturalHeight * alignment.scale) / 2;
-      
-      // Apply transformations relative to the top-left origin, shifting by user X/Y
-      ctx.translate(alignment.x, alignment.y);
-      
-      // To rotate around the center of the overlay image:
-      // Move to center -> Rotate/Scale -> Move back
-      ctx.translate(overlayCenterX, overlayCenterY);
-      ctx.rotate((alignment.rotation * Math.PI) / 180);
-      ctx.scale(alignment.scale, alignment.scale);
-      ctx.translate(-overlayCenterX, -overlayCenterY);
+    // 2. Draw After
+    const imgAfter = await loadImage(afterSrc);
+    ctx.save();
+    const overlayCenterX = (imgAfter.naturalWidth * alignment.scale) / 2;
+    const overlayCenterY = (imgAfter.naturalHeight * alignment.scale) / 2;
+    ctx.translate(alignment.x, alignment.y);
+    ctx.translate(overlayCenterX, overlayCenterY);
+    ctx.rotate((alignment.rotation * Math.PI) / 180);
+    ctx.scale(alignment.scale, alignment.scale);
+    ctx.translate(-overlayCenterX, -overlayCenterY);
+    ctx.globalAlpha = alignment.opacity;
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(imgAfter, 0, 0);
+    ctx.restore();
 
-      ctx.globalAlpha = alignment.opacity;
-      ctx.globalCompositeOperation = 'multiply'; // Simulate the UI blend mode
-      ctx.drawImage(imgAfter, 0, 0);
-      
-      ctx.restore();
-    }
-
-    // 3. Draw Detection Results (Bounding Boxes)
+    // 3. Draw Results
     if (results.length > 0) {
       ctx.globalAlpha = 1.0;
       ctx.globalCompositeOperation = 'source-over';
@@ -84,43 +67,137 @@ export const downloadCompositeImage = async (
           case ChangeType.MOVED: color = '#3B82F6'; break;
         }
 
-        // Draw Box
         ctx.strokeStyle = color;
         ctx.strokeRect(item.box.x, item.box.y, item.box.width, item.box.height);
 
-        // Draw Label Background
         const text = item.displayId || `#${item.id}`;
         const textMetrics = ctx.measureText(text);
         const padding = 6;
-        const textW = textMetrics.width;
-        const textH = 24; // approximate height
-
         ctx.fillStyle = color;
-        ctx.fillRect(item.box.x, item.box.y - textH - padding * 2, textW + padding * 2, textH + padding * 2);
-
-        // Draw Label Text
+        ctx.fillRect(item.box.x, item.box.y - 36, textMetrics.width + padding * 2, 36);
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(text, item.box.x + padding, item.box.y - padding);
+        ctx.fillText(text, item.box.x + padding, item.box.y - 10);
       });
     }
+    return canvas;
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+};
 
-    // 4. Trigger Download
+// --- Export Functions ---
+
+export const downloadCompositeImage = async (
+  beforeSrc: string,
+  afterSrc: string,
+  alignment: AlignmentState,
+  results: DiffItem[]
+) => {
+  const canvas = await createCompositeCanvas(beforeSrc, afterSrc, alignment, results);
+  if (canvas) {
     const link = document.createElement('a');
     link.download = 'rulesome-diff-export.png';
     link.href = canvas.toDataURL('image/png');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
-  } catch (error) {
-    console.error("Failed to export image", error);
-    alert("画像の生成に失敗しました。");
   }
 };
 
-/**
- * Step 1: ROI Detection
- */
+export const generateBatchZip = async (pairs: ComparisonPair[]) => {
+  const zip = new JSZip();
+  const folder = zip.folder("rulesome-diff-report");
+
+  const promises = pairs.map(async (pair, index) => {
+    // Generate the composite image for this pair
+    const canvas = await createCompositeCanvas(
+      pair.beforePage.url,
+      pair.afterPage.url,
+      pair.alignment,
+      pair.results
+    );
+    
+    if (canvas) {
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+      if (blob) {
+        // Filename: 01_Page1-Page1.png
+        const fileName = `${(index + 1).toString().padStart(2, '0')}_${pair.name.replace(/[\/\s:]+/g, '_')}.png`;
+        folder?.file(fileName, blob);
+      }
+    }
+  });
+
+  await Promise.all(promises);
+  
+  const content = await zip.generateAsync({ type: "blob" });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(content);
+  link.download = `rulesome-report-${new Date().toISOString().slice(0,10)}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// --- PDF & File Processing ---
+
+export const processFileToPages = async (file: File): Promise<PageData[]> => {
+  const pages: PageData[] = [];
+  const fileType = file.type;
+
+  if (fileType === 'application/pdf') {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const numPages = pdf.numPages;
+
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2.0 }); // High quality render
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        // Cast to any to avoid type mismatch with pdfjs-dist RenderParameters
+        await page.render({ canvasContext: context, viewport: viewport } as any).promise;
+        
+        const imageUrl = canvas.toDataURL('image/jpeg', 0.9);
+        pages.push({
+          id: `${file.name}-p${i}-${Date.now()}`,
+          url: imageUrl,
+          fileName: file.name,
+          pageNumber: i,
+        });
+      }
+    } catch (error) {
+      console.error("PDF processing error:", error);
+      throw new Error("PDFの読み込みに失敗しました。");
+    }
+  } else if (fileType.startsWith('image/')) {
+    const url = URL.createObjectURL(file);
+    pages.push({
+      id: `${file.name}-p1-${Date.now()}`,
+      url: url,
+      fileName: file.name,
+      pageNumber: 1
+    });
+  }
+
+  return pages;
+};
+
+// --- Analysis Logic ---
+
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 const detectROIs = (
   ctxBefore: CanvasRenderingContext2D,
   imgAfter: HTMLImageElement,
@@ -263,9 +340,6 @@ const detectROIs = (
   }));
 };
 
-/**
- * Step 2: Tiling
- */
 const generateTiles = (rois: Rect[], maxWidth: number, maxHeight: number): Rect[] => {
   const TILE_SIZE = 900;
   const OVERLAP = 200;
@@ -298,9 +372,6 @@ const generateTiles = (rois: Rect[], maxWidth: number, maxHeight: number): Rect[
   return tiles;
 };
 
-/**
- * Step 3: Semantic Analysis
- */
 const analyzeTile = async (
   ai: GoogleGenAI,
   imgBefore: HTMLImageElement,
@@ -315,11 +386,9 @@ const analyzeTile = async (
   const cropCtx = cropCanvas.getContext('2d');
   if (!cropCtx) return { items: [], tokenCount: 0 };
 
-  // Before Crop
   cropCtx.drawImage(imgBefore, tile.x, tile.y, tile.width, tile.height, 0, 0, tile.width, tile.height);
   const base64Before = cropCanvas.toDataURL("image/jpeg", 0.8).split(',')[1];
 
-  // After Crop
   cropCtx.clearRect(0, 0, tile.width, tile.height);
   cropCtx.save();
   cropCtx.translate(-tile.x, -tile.y);
@@ -355,7 +424,7 @@ const analyzeTile = async (
     }
     
     【座標】
-    0-1000の正規化座標を使用。順序は [xmin, ymin, xmax, ymax] です。
+    0-1000の正規化座標を使用。
   `;
 
   try {
@@ -399,7 +468,7 @@ const analyzeTile = async (
     const rawDiffs = JSON.parse(jsonText) as any[];
 
     const items = rawDiffs.map((item: any) => {
-      const [xmin, ymin, xmax, ymax] = item.box_2d;
+      const [ymin, xmin, ymax, xmax] = item.box_2d;
       const nYmin = Math.max(0, Math.min(1000, ymin));
       const nXmin = Math.max(0, Math.min(1000, xmin));
       const nYmax = Math.max(0, Math.min(1000, ymax));
@@ -429,9 +498,6 @@ const analyzeTile = async (
   }
 };
 
-/**
- * Main Orchestrator
- */
 export const analyzeImageDiff = async (
   beforeSrc: string,
   afterSrc: string,
@@ -460,7 +526,6 @@ export const analyzeImageDiff = async (
     if (!ctx) throw new Error("Canvas context error");
     ctx.drawImage(imgBefore, 0, 0);
 
-    // ROI Sensitivity: Macro = lower sensitivity (ignore small stuff), Micro = high sensitivity
     const sensitivity = mode === 'MACRO' ? 50 : 85;
 
     if (onProgress) onProgress("Rulesome AI: 変更候補エリアをスキャン中...");
@@ -524,10 +589,9 @@ export const analyzeImageDiff = async (
       }
     });
 
-    // Sort by Y position, then X position for natural reading order
     uniqueDiffs.sort((a, b) => {
       const yDiff = a.box.y - b.box.y;
-      if (Math.abs(yDiff) > 20) return yDiff; // if Y is significantly different
+      if (Math.abs(yDiff) > 20) return yDiff;
       return a.box.x - b.box.x;
     });
 
@@ -545,7 +609,6 @@ export const analyzeImageDiff = async (
     return { items: finalItems, totalTokens };
 
   } catch (e) {
-    // Let the caller handle AbortError
     throw e;
   }
 };
