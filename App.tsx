@@ -256,8 +256,17 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-white text-google-text font-sans">
+      <style>{`
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+      `}</style>
       <header className="h-14 border-b border-google-border bg-white flex items-center justify-between px-4 z-30 shrink-0">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M16 2L3.87564 9V23L16 30L28.1244 23V9L16 2Z" fill="#FBC02D" stroke="#FBC02D" strokeWidth="2" strokeLinejoin="round"/>
             <path d="M16 16V30M3.87564 9L16 16L28.1244 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -265,27 +274,28 @@ export default function App() {
             <path d="M16 16L3.87564 9V23L16 30V16Z" fill="black" fillOpacity="0.05"/>
           </svg>
           <div>
-            <h1 className="text-lg font-bold text-gray-800 tracking-tight">Rulesome AI Drawing Diff Studio</h1>
+            <h1 className="text-lg font-bold text-gray-800 tracking-tight whitespace-nowrap">Rulesome AI Drawing Diff Studio</h1>
           </div>
         </div>
 
         {/* Phase Indicator or Tabs */}
         {phase === 'ANALYSIS' && (
-           <div className="flex-1 flex justify-center px-4 overflow-x-auto">
-             <div className="flex gap-1">
+           <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
+             <div className="flex gap-1 h-full items-end min-w-max">
                {pairs.map((pair, idx) => (
                  <button
                    key={pair.id}
                    onClick={() => setActivePairId(pair.id)}
                    className={cn(
-                     "px-3 py-1.5 text-xs font-medium rounded-t-md border-b-2 transition-colors flex items-center gap-2",
+                     "px-3 py-1.5 text-xs font-medium rounded-t-md border-b-2 transition-colors flex items-center gap-2 min-w-[120px] max-w-[200px] whitespace-nowrap",
                      activePairId === pair.id 
                        ? "border-google-blue text-google-blue bg-blue-50/50" 
                        : "border-transparent text-gray-500 hover:bg-gray-50"
                    )}
+                   title={pair.name}
                  >
-                   <span className="bg-gray-200 text-gray-600 rounded-full w-4 h-4 flex items-center justify-center text-[9px]">{idx + 1}</span>
-                   {pair.name}
+                   <span className="bg-gray-200 text-gray-600 rounded-full w-4 h-4 flex items-center justify-center text-[9px] flex-shrink-0">{idx + 1}</span>
+                   <span className="truncate">{pair.name}</span>
                  </button>
                ))}
              </div>
@@ -293,16 +303,16 @@ export default function App() {
         )}
 
         {/* View Controls & Export */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
            {phase === 'ANALYSIS' && (
              <div className="flex bg-gray-100 rounded-md p-1 gap-1 mr-4">
-               <button onClick={() => setShowBefore(!showBefore)} className={cn("px-2 py-1 text-xs rounded flex items-center gap-1.5", showBefore ? "bg-white shadow-sm text-google-blue" : "text-google-subtext")}>
+               <button onClick={() => setShowBefore(!showBefore)} className={cn("px-2 py-1 text-xs rounded flex items-center gap-1.5 whitespace-nowrap", showBefore ? "bg-white shadow-sm text-google-blue" : "text-google-subtext")}>
                  {showBefore ? <Eye size={12}/> : <EyeOff size={12}/>} Before
                </button>
-               <button onClick={() => setShowAfter(!showAfter)} className={cn("px-2 py-1 text-xs rounded flex items-center gap-1.5", showAfter ? "bg-white shadow-sm text-google-blue" : "text-google-subtext")}>
+               <button onClick={() => setShowAfter(!showAfter)} className={cn("px-2 py-1 text-xs rounded flex items-center gap-1.5 whitespace-nowrap", showAfter ? "bg-white shadow-sm text-google-blue" : "text-google-subtext")}>
                  {showAfter ? <Eye size={12}/> : <EyeOff size={12}/>} After
                </button>
-               <button onClick={() => setShowDiff(!showDiff)} className={cn("px-2 py-1 text-xs rounded flex items-center gap-1.5 font-medium", showDiff ? "bg-purple-600 text-white shadow-sm" : "text-google-subtext hover:text-gray-900")}>
+               <button onClick={() => setShowDiff(!showDiff)} className={cn("px-2 py-1 text-xs rounded flex items-center gap-1.5 font-medium whitespace-nowrap", showDiff ? "bg-purple-600 text-white shadow-sm" : "text-google-subtext hover:text-gray-900")}>
                  <LayoutTemplate size={12}/> Diff
                </button>
              </div>
@@ -310,7 +320,7 @@ export default function App() {
 
            {phase === 'ANALYSIS' && (
              <div className="relative">
-               <Button variant="secondary" className="h-8 text-xs gap-1" onClick={() => setShowExportMenu(!showExportMenu)}>
+               <Button variant="secondary" className="h-8 text-xs gap-1 whitespace-nowrap" onClick={() => setShowExportMenu(!showExportMenu)}>
                  エクスポート <ChevronDown size={12}/>
                </Button>
                {showExportMenu && (
