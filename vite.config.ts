@@ -9,9 +9,6 @@ const __dirname = path.dirname(__filename);
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      // ▼ リポジトリ名に合わせて設定（ここが違うと画面が白くなります）
-      base: '/Rulesome-AI-Drawing-Diff-Studio/',
-      
       server: {
         port: 3000,
         host: '0.0.0.0',
